@@ -58,6 +58,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <Version>0.9</Version>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
