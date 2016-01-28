@@ -99,7 +99,8 @@ BOOL CTcpTesterDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
-	// TODO: Add extra initialization here
+	CEdit *timeout = (CEdit*)GetDlgItem(IDC_EDITTIMEOUT);
+	timeout->SetWindowText(CString("15"));
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -166,32 +167,42 @@ void CTcpTesterDlg::OnBnClickedButton1()
 
 	CString edit3;
 	GetDlgItemText(IDC_EDITTIMEOUT, edit3);	
+	CT2A ascii(edit3);
+	int timeout = atoi(ascii.m_psz);
 
 	if (edit1 == "" || edit2 == "") {
 		AfxMessageBox(_T("Please enter all required values!"), MB_OK | MB_ICONSTOP);
+		return;
+	}
+
+	if (timeout < 1 || timeout > 120) {
+		AfxMessageBox(_T("Please enter a timeout between 1 and 120 seconds"), MB_OK | MB_ICONSTOP);
 		return;
 	}
 	
 	ClearResultsCtrl();
 	SetStatus(CString("Testing connection"));
 
-	int iResult = ConnectToAddr(edit1, edit2, edit3);
+	int iResult = ConnectToAddr(edit1, edit2, timeout);
 	CString msg = iResult ? CString("Connection failed!") : CString("Connection successful");
 	SetStatus(msg);
 	AppendToResultsCtrl(msg);
 }
 
-int CTcpTesterDlg::ConnectToAddr(CString addr, CString port, CString timeout){
+int CTcpTesterDlg::ConnectToAddr(CString addr, CString port, int timeout){
 	WSADATA wsaData;
 	int iResult;
+	struct addrinfo *result = NULL, *ptr = NULL, hints;
+	TIMEVAL Timeout;
+	Timeout.tv_sec = timeout;
+	Timeout.tv_usec = 0;
 
 	AppendToResultsCtrl(CString("Setting up socket..\r\n"));
 	WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-	struct addrinfo *result = NULL, *ptr = NULL, hints;
 	ZeroMemory(&hints, sizeof(hints));
 
-	hints.ai_family = AF_UNSPEC;
+	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 
@@ -209,12 +220,49 @@ int CTcpTesterDlg::ConnectToAddr(CString addr, CString port, CString timeout){
 	AppendToResultsCtrl(CString("Resolved address to ") + CString(ipAddress) + CString(" \r\n"));
 	ptr = result;
 
-	SOCKET ConnectSocket = INVALID_SOCKET;
-	AppendToResultsCtrl(CString("Connecting..\r\n"));
+	AppendToResultsCtrl(CString("Creating socket..\r\n"));
+	SOCKET ConnectSocket = INVALID_SOCKET;	
 	ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
-	iResult = connect(ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
 	
-	return iResult;
+	//set the socket in non-blocking
+	unsigned long iMode = 1;
+	iResult = ioctlsocket(ConnectSocket, FIONBIO, &iMode);
+	if (iResult != NO_ERROR)
+	{
+		AppendToResultsCtrl(CString("Could not create socket\r\n"));
+		return iResult;
+	}
+
+	AppendToResultsCtrl(CString("Socket created\r\n"));
+	AppendToResultsCtrl(CString("Connecting..\r\n"));
+
+	if (connect(ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen)) {
+		int error = WSAGetLastError();
+		if (error != WSAEWOULDBLOCK) return iResult;
+	}
+	
+	// restart the socket mode
+	iMode = 0;
+	iResult = ioctlsocket(ConnectSocket, FIONBIO, &iMode);
+	if (iResult != NO_ERROR)
+	{
+		return iResult;
+	}
+
+	fd_set Write, Err;
+	FD_ZERO(&Write);
+	FD_ZERO(&Err);
+	FD_SET(ConnectSocket, &Write);
+	FD_SET(ConnectSocket, &Err);
+
+	// check if the socket is ready
+	select(0, NULL, &Write, &Err, &Timeout);
+	if (!FD_ISSET(ConnectSocket, &Write))
+	{
+		return 1;
+	}
+
+	return 0;
 }
 
 

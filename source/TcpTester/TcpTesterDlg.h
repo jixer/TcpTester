@@ -28,7 +28,7 @@ protected:
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
-	int ConnectToAddr(CString addr, CString port, CString timeout);
+	int ConnectToAddr(CString addr, CString port, int timeout);
 	void AppendTextToEditCtrl(CEdit& edit, LPCTSTR pszText);
 	void ClearResultsCtrl();
 	void AppendToResultsCtrl(LPCTSTR pszText);
